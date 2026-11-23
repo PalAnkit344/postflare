@@ -36,6 +36,7 @@ import { VerifySignupPage } from "./pages/VerifySignupPage";
 import { ProfilePage } from "./pages/ProfilePage";
 import { InstanceSettingsPage } from "./pages/SettingsPage";
 import { WorkspaceSettingsPage } from "./pages/WorkspaceSettingsPage";
+import { AgentsPage } from "./pages/AgentsPage";
 
 /** Same-origin path from `?next=` (used to come back to an invitation after signing in). */
 function nextPath(): string {
@@ -182,6 +183,7 @@ function WorkspaceScope() {
                 <Route path="playbooks/:id" element={<Gate permission="posts.read">{<PlaybookPage />}</Gate>} />
                 <Route path="accounts" element={<Gate permission="accounts.read">{<AccountsPage />}</Gate>} />
                 <Route path="media" element={<Gate permission="media.read">{<MediaPage />}</Gate>} />
+                <Route path="agents" element={<Gate permission="posts.read">{<AgentsPage />}</Gate>} />
                 <Route path="workspace" element={<Gate>{<WorkspaceSettingsPage />}</Gate>} />
                 <Route path="profile" element={<ProfilePage />} />
                 <Route path="admin" element={<InstanceGate permission="instance.overview.view">{<OverviewPage />}</InstanceGate>} />

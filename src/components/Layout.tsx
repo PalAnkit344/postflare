@@ -6,6 +6,7 @@ import {
   ArrowUpCircle,
   BarChart3,
   BookOpenText,
+  Bot,
   Building2,
   CalendarDays,
   Check,
@@ -65,6 +66,7 @@ const NAV: NavItem[] = [
   { to: "/playbooks", label: "Playbooks", icon: BookOpenText, permission: "posts.read" },
   { to: "/accounts", label: "Accounts", icon: Users, permission: "accounts.read" },
   { to: "/media", label: "Media", icon: Image, permission: "media.read" },
+  { to: "/agents", label: "AI Agents", icon: Bot, permission: "posts.read" },
   { to: "/workspace", label: "Workspace settings", icon: Settings },
 ];
 

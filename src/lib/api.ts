@@ -434,4 +434,18 @@ export const api = {
     create: (name: string) => request<{ id: string; token: string }>("POST", "/keys", { name }),
     remove: (id: string) => request<{ ok: true }>("DELETE", `/keys/${id}`),
   },
+  openrouter: {
+    getConfig: () => get<{ configured: boolean; defaultModel: string; maskedKey: string | null; updatedAt: number | null }>("/openrouter/config"),
+    saveConfig: (body: { apiKey: string; defaultModel?: string }) => request<{ ok: true; config: any }>("POST", "/openrouter/config", body),
+    test: (apiKey?: string) => request<{ ok: boolean; message: string; label?: string; usage?: number; limit?: number }>("POST", "/openrouter/test", { apiKey }),
+    disconnect: () => request<{ ok: true; disconnected: true }>("DELETE", "/openrouter/config"),
+  },
+  cloudreel: {
+    listJobs: (q: { status?: string; limit?: number } = {}) => get<{ jobs: any[] }>(`/cloudreel/jobs${qs(q)}`),
+    getJob: (id: string) => get<any>(`/cloudreel/jobs/${encodeURIComponent(id)}`),
+    approveJob: (id: string) => request<{ ok: true; approved: true }>("POST", `/cloudreel/jobs/${encodeURIComponent(id)}/approve`, {}),
+    retryJob: (id: string) => request<{ ok: true; retried: true }>("POST", `/cloudreel/jobs/${encodeURIComponent(id)}/retry`, {}),
+    processDue: (q: { checkSha256?: boolean; batchSize?: number } = {}) => request<{ ok: true; result: any }>("POST", `/cloudreel/process-due${qs(q)}`, {}),
+    submitManifest: (manifest: any, autoApprove = false) => request<{ ok: true; videoId: string; jobId: string }>("POST", `/cloudreel/manifest${qs({ autoApprove: autoApprove ? "true" : undefined })}`, manifest),
+  },
 };

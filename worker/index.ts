@@ -18,6 +18,8 @@ import { accessRequestPublicRoutes, accessRequestRoutes } from "./routes/accessR
 import { accountGroupRoutes } from "./routes/accountGroups";
 import { accountRoutes } from "./routes/accounts";
 import { agentIngestionRoutes } from "./routes/agentIngestion";
+import { cloudreelRoutes, openrouterRoutes } from "./routes/cloudreel";
+import { processDueCloudReelJobs } from "./lib/cloudreel";
 import { adminRoutes } from "./routes/admin";
 import { analyticsRoutes } from "./routes/analytics";
 import { appLoginRoutes } from "./routes/appLogin";
@@ -83,6 +85,8 @@ api.route("/", billingAdminRoutes);
 api.route("/", supportAdminRoutes);
 api.route("/v1/agent", agentIngestionRoutes);
 api.route("/incoming", agentIngestionRoutes);
+api.route("/cloudreel", cloudreelRoutes);
+api.route("/openrouter", openrouterRoutes);
 api.notFound((c) => c.json({ error: "Not found" }, 404));
 
 const app = new Hono<AppEnv>();
@@ -172,6 +176,7 @@ export async function frequentJobs(env: Env): Promise<void> {
     refreshExpiringAccounts(env),
     refreshAvatars(env),
     demoCron(env),
+    processDueCloudReelJobs(env).catch((err) => console.error("CloudReel due jobs check failed", err)),
   ]);
   await recordCronRun(env, "frequent", started);
 }
