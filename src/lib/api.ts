@@ -436,7 +436,7 @@ export const api = {
   },
   openrouter: {
     getConfig: () => get<{ configured: boolean; defaultModel: string; maskedKey: string | null; updatedAt: number | null }>("/openrouter/config"),
-    saveConfig: (body: { apiKey: string; defaultModel?: string }) => request<{ ok: true; config: any }>("POST", "/openrouter/config", body),
+    saveConfig: (body: { apiKey?: string; defaultModel?: string }) => request<{ ok: true; config: any }>("POST", "/openrouter/config", body),
     test: (apiKey?: string) => request<{ ok: boolean; message: string; label?: string; usage?: number; limit?: number }>("POST", "/openrouter/test", { apiKey }),
     disconnect: () => request<{ ok: true; disconnected: true }>("DELETE", "/openrouter/config"),
   },

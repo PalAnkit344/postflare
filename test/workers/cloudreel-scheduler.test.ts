@@ -786,4 +786,27 @@ describe("CloudReel Central Video Scheduler & Multi-Account Publisher", () => {
     expect(afterDelete.configured).toBe(false);
     expect(afterDelete.maskedKey).toBeNull();
   });
+
+  it("OpenRouter custom model configuration: allows setting and updating any custom model slug", async () => {
+    // Save with custom model
+    await saveOpenRouterConfig(DB, {
+      apiKey: "sk-or-v1-custom1234567890custom1234567890",
+      defaultModel: "anthropic/claude-3.7-sonnet",
+    });
+
+    let config = await getOpenRouterConfig(DB);
+    expect(config?.defaultModel).toBe("anthropic/claude-3.7-sonnet");
+
+    // Update with another custom model (e.g. deepseek/deepseek-r1)
+    await saveOpenRouterConfig(DB, {
+      apiKey: "sk-or-v1-custom1234567890custom1234567890",
+      defaultModel: "deepseek/deepseek-r1",
+    });
+
+    config = await getOpenRouterConfig(DB);
+    expect(config?.defaultModel).toBe("deepseek/deepseek-r1");
+
+    const dto = await getOpenRouterConfigDTO(DB);
+    expect(dto.defaultModel).toBe("deepseek/deepseek-r1");
+  });
 });

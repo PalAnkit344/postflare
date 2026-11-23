@@ -26,10 +26,15 @@ import { cn } from "../lib/format";
 
 const OPENROUTER_MODELS = [
   { value: "anthropic/claude-3.5-sonnet", label: "Claude 3.5 Sonnet (Recommended)" },
-  { value: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct" },
-  { value: "openai/gpt-4o-mini", label: "GPT-4o Mini" },
+  { value: "anthropic/claude-3.7-sonnet", label: "Claude 3.7 Sonnet (Latest)" },
+  { value: "deepseek/deepseek-chat", label: "DeepSeek V3 (Chat)" },
+  { value: "deepseek/deepseek-r1", label: "DeepSeek R1 (Reasoning)" },
+  { value: "openai/gpt-4o", label: "GPT-4o" },
+  { value: "openai/gpt-4o-mini", label: "GPT-4o Mini (Fast & Cheap)" },
   { value: "google/gemini-2.0-flash-001", label: "Gemini 2.0 Flash" },
-  { value: "deepseek/deepseek-chat", label: "DeepSeek V3" },
+  { value: "meta-llama/llama-3.3-70b-instruct", label: "Llama 3.3 70B Instruct" },
+  { value: "qwen/qwen-2.5-72b-instruct", label: "Qwen 2.5 72B Instruct" },
+  { value: "custom", label: "✨ Custom Model (Enter any OpenRouter Model ID)..." },
 ];
 
 export function AgentsPage() {
@@ -46,6 +51,7 @@ export function AgentsPage() {
   } | null>(null);
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [selectedModel, setSelectedModel] = useState("anthropic/claude-3.5-sonnet");
+  const [customModelInput, setCustomModelInput] = useState("");
   const [showKey, setShowKey] = useState(false);
   const [testingKey, setTestingKey] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
@@ -63,7 +69,18 @@ export function AgentsPage() {
     try {
       const res = await api.openrouter.getConfig();
       setOrConfig(res);
-      if (res.defaultModel) setSelectedModel(res.defaultModel);
+      if (res.defaultModel) {
+        const isPreset = OPENROUTER_MODELS.some(
+          (m) => m.value === res.defaultModel && m.value !== "custom"
+        );
+        if (isPreset) {
+          setSelectedModel(res.defaultModel);
+          setCustomModelInput("");
+        } else {
+          setSelectedModel("custom");
+          setCustomModelInput(res.defaultModel);
+        }
+      }
     } catch {
       // ignore
     }
@@ -115,11 +132,18 @@ export function AgentsPage() {
       toast.error("Please enter an OpenRouter API key");
       return;
     }
+
+    const effectiveModel = selectedModel === "custom" ? customModelInput.trim() : selectedModel;
+    if (!effectiveModel) {
+      toast.error("Please enter a custom OpenRouter model slug (e.g. anthropic/claude-3.7-sonnet)");
+      return;
+    }
+
     setSavingKey(true);
     try {
       const res = await api.openrouter.saveConfig({
-        apiKey: apiKeyInput.trim(),
-        defaultModel: selectedModel,
+        apiKey: apiKeyInput.trim() || undefined,
+        defaultModel: effectiveModel,
       });
       toast.success("OpenRouter configuration saved");
       setOrConfig(res.config);
@@ -139,6 +163,8 @@ export function AgentsPage() {
       toast.success("OpenRouter disconnected");
       setOrConfig({ configured: false, defaultModel: "anthropic/claude-3.5-sonnet", maskedKey: null, updatedAt: null });
       setApiKeyInput("");
+      setSelectedModel("anthropic/claude-3.5-sonnet");
+      setCustomModelInput("");
       setTestResult(null);
     } catch (err) {
       toast.error("Failed to disconnect", err instanceof Error ? err.message : String(err));
@@ -221,14 +247,19 @@ export function AgentsPage() {
                 <Sparkles className="size-5" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
                     OpenRouter AI Connection
                   </h3>
                   {orConfig?.configured ? (
-                    <Badge tone="green" dot>
-                      Connected
-                    </Badge>
+                    <>
+                      <Badge tone="green" dot>
+                        Connected
+                      </Badge>
+                      <span className="text-xs font-mono bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 px-2 py-0.5 rounded border border-purple-200 dark:border-purple-800">
+                        {orConfig.defaultModel}
+                      </span>
+                    </>
                   ) : (
                     <Badge tone="zinc">Not Connected</Badge>
                   )}
@@ -278,21 +309,65 @@ export function AgentsPage() {
                 )}
               </Field>
 
-              <Field label="Default Agent Model" help="LLM used for caption generation and scheduler intelligence">
-                {() => (
-                  <Select
-                    value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
-                    disabled={!canManage}
+              <div className="space-y-3">
+                <Field
+                  label="Default Agent Model"
+                  help={
+                    orConfig?.defaultModel
+                      ? `Active model: ${orConfig.defaultModel}`
+                      : "LLM used for caption generation and scheduler intelligence"
+                  }
+                >
+                  {() => (
+                    <Select
+                      value={selectedModel}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setSelectedModel(val);
+                        if (val !== "custom") setCustomModelInput("");
+                      }}
+                      disabled={!canManage}
+                    >
+                      {OPENROUTER_MODELS.map((m) => (
+                        <option key={m.value} value={m.value}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </Field>
+
+                {selectedModel === "custom" && (
+                  <Field
+                    label="Custom OpenRouter Model Slug"
+                    help="Enter any exact model ID from OpenRouter"
                   >
-                    {OPENROUTER_MODELS.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </Select>
+                    {() => (
+                      <div>
+                        <Input
+                          type="text"
+                          value={customModelInput}
+                          onChange={(e) => setCustomModelInput(e.target.value)}
+                          placeholder="e.g. anthropic/claude-3.7-sonnet or deepseek/deepseek-r1"
+                          className="font-mono text-xs"
+                          disabled={!canManage}
+                        />
+                        <div className="mt-1 flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400">
+                          <span>Supports any public or fine-tuned model slug</span>
+                          <a
+                            href="https://openrouter.ai/models"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 font-medium text-purple-600 hover:text-purple-700 dark:text-purple-400"
+                          >
+                            Browse OpenRouter Models <ExternalLink className="size-3" />
+                          </a>
+                        </div>
+                      </div>
+                    )}
+                  </Field>
                 )}
-              </Field>
+              </div>
             </div>
 
             {testResult && (

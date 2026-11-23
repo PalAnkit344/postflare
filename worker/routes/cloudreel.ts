@@ -184,14 +184,22 @@ openrouterRoutes.get("/config", requirePermission("posts.read"), async (c) => {
  */
 openrouterRoutes.post("/config", requirePermission("posts.write"), async (c) => {
   try {
-    const body = await c.req.json<{ apiKey: string; defaultModel?: string }>();
-    if (!body?.apiKey?.trim()) {
-      return c.json({ error: "apiKey is required" }, 400);
+    const body = await c.req.json<{ apiKey?: string; defaultModel?: string }>();
+    let apiKey = body?.apiKey?.trim();
+
+    // If apiKey is omitted in request, reuse existing stored key
+    if (!apiKey) {
+      const stored = await getOpenRouterConfig(c.env.DB);
+      apiKey = stored?.apiKey;
+    }
+
+    if (!apiKey) {
+      return c.json({ error: "OpenRouter API key is required" }, 400);
     }
 
     const saved = await saveOpenRouterConfig(c.env.DB, {
-      apiKey: body.apiKey.trim(),
-      defaultModel: body.defaultModel,
+      apiKey,
+      defaultModel: body?.defaultModel?.trim(),
     });
 
     return c.json({ ok: true, config: saved });
