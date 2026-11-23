@@ -46,5 +46,7 @@ declare namespace Cloudflare {
     SUPPORT_DB: D1Database;
     /** Own instance for "delete after publishing" (media gc, media status, tombstones). */
     MEDIA_GC_DB: D1Database;
+    /** Optional test binding for dedicated research R2 storage. */
+    RESEARCH_STORAGE?: R2Bucket;
   }
 }

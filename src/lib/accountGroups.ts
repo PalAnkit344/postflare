@@ -3,29 +3,37 @@
 
 import type { AccountDTO, AccountGroupDTO } from "../../shared/types";
 import { ACCOUNT_GROUP_COLORS } from "../../shared/accountGroups";
+import { bufferServiceDisplayName } from "../../shared/providerNames";
 
 export type AccountsView = "platform" | "group" | "all";
 export const ACCOUNTS_VIEWS: AccountsView[] = ["platform", "group", "all"];
 
 export interface AccountSection {
-  /** Stable key (collapsed state): `p:<provider>`, `g:<groupId>`, `g:none` or `all`. */
+  /** Stable key (collapsed state): `p:<provider>`, `p:buffer:<tag>`, `g:<groupId>`, `g:none` or `all`. */
   key: string;
   kind: "platform" | "group" | "ungrouped" | "all";
   title: string;
   accounts: AccountDTO[];
   group?: AccountGroupDTO;
   provider?: string;
+  bufferTag?: string;
 }
 
 export const UNGROUPED_KEY = "g:none";
 
 const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
 
-/** Search by name or @username (with or without the @), case- and accent-insensitive. */
+/** Search by name, @username, #tag or service platform, case- and accent-insensitive. */
 export function matchesAccountSearch(a: AccountDTO, query: string): boolean {
-  const q = fold(query.trim().replace(/^@/, ""));
+  const q = fold(query.trim().replace(/^[@#]/, ""));
   if (!q) return true;
-  return fold(a.name).includes(q) || fold((a.username ?? "").replace(/^@/, "")).includes(q);
+  return (
+    fold(a.name).includes(q) ||
+    fold((a.username ?? "").replace(/^[@#]/, "")).includes(q) ||
+    fold((a.tag ?? "").replace(/^[@#]/, "")).includes(q) ||
+    (typeof a.meta?.tag === "string" && fold(a.meta.tag.replace(/^[@#]/, "")).includes(q)) ||
+    (typeof a.meta?.service === "string" && fold(bufferServiceDisplayName(a.meta.service)).includes(q))
+  );
 }
 
 const fold = (s: string) => s.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -40,32 +48,100 @@ export function sortGroups(groups: AccountGroupDTO[]): AccountGroupDTO[] {
   return [...groups].sort((a, b) => a.position - b.position || a.createdAt - b.createdAt);
 }
 
+export interface BuildSectionsOptions {
+  groups?: AccountGroupDTO[];
+  providerName?: (id: string) => string;
+  query?: string;
+  hideEmpty?: boolean;
+  bufferTag?: string | null;
+}
+
 /**
- * Sections for a view. Platform: one per platform, by platform name. Group: the groups in order (empty ones too unless
- * searching or `hideEmpty`), then "Ungrouped" (accounts without a known group) when not empty. All: one flat section
- * in the API's order. `query` filters every view.
+ * Sections for a view. Platform: one per platform, by platform name, with Buffer accounts grouped by Buffer account tag (#<tag>).
+ * Group: the groups in order (empty ones too unless searching or `hideEmpty`), then "Ungrouped" (accounts without a known group)
+ * when not empty. All: one flat section in the API's order. `query` filters every view.
  */
 export function buildSections(
   accounts: AccountDTO[],
   view: AccountsView,
-  opts: { groups?: AccountGroupDTO[]; providerName?: (id: string) => string; query?: string; hideEmpty?: boolean } = {},
+  opts: BuildSectionsOptions = {},
 ): AccountSection[] {
   const providerName = opts.providerName ?? ((id: string) => id);
   const query = opts.query ?? "";
-  const list = query.trim() ? accounts.filter((a) => matchesAccountSearch(a, query)) : accounts;
+  let list = accounts;
+
+  if (opts.bufferTag) {
+    const targetTag = opts.bufferTag.trim().replace(/^#/, "");
+    list = list.filter(
+      (a) =>
+        a.provider === "buffer" &&
+        (a.tag?.replace(/^#/, "") === targetTag ||
+          (typeof a.meta?.tag === "string" && a.meta.tag.replace(/^#/, "") === targetTag) ||
+          a.username?.replace(/^#/, "") === targetTag),
+    );
+  }
+
+  if (query.trim()) {
+    list = list.filter((a) => matchesAccountSearch(a, query));
+  }
+
   if (view === "all") return [{ key: "all", kind: "all", title: "All accounts", accounts: list }];
 
   if (view === "platform") {
-    const by = new Map<string, AccountDTO[]>();
-    for (const a of list) by.set(a.provider, [...(by.get(a.provider) ?? []), a]);
-    return [...by.entries()]
-      .map(([provider, accs]) => ({ key: `p:${provider}`, kind: "platform" as const, title: providerName(provider), provider, accounts: sortAccounts(accs, providerName) }))
-      .sort((a, b) => collator.compare(a.title, b.title));
+    const nonBufferByProvider = new Map<string, AccountDTO[]>();
+    const bufferByTag = new Map<string, AccountDTO[]>();
+
+    for (const a of list) {
+      if (a.provider === "buffer") {
+        const tag = (a.tag ?? (typeof a.meta?.tag === "string" ? a.meta.tag : undefined) ?? a.username ?? "").trim().replace(/^#/, "");
+        bufferByTag.set(tag, [...(bufferByTag.get(tag) ?? []), a]);
+      } else {
+        nonBufferByProvider.set(a.provider, [...(nonBufferByProvider.get(a.provider) ?? []), a]);
+      }
+    }
+
+    const sections: AccountSection[] = [];
+
+    // Non-Buffer provider sections
+    for (const [provider, accs] of nonBufferByProvider.entries()) {
+      sections.push({
+        key: `p:${provider}`,
+        kind: "platform",
+        title: providerName(provider),
+        provider,
+        accounts: sortAccounts(accs, providerName),
+      });
+    }
+
+    // Buffer sections grouped by account tag
+    for (const [tag, accs] of bufferByTag.entries()) {
+      const services = Array.from(
+        new Set(
+          accs
+            .map((a) => (typeof a.meta?.service === "string" ? bufferServiceDisplayName(a.meta.service) : null))
+            .filter((s): s is string => Boolean(s)),
+        ),
+      );
+      const platformsPart = services.length > 0 ? ` (${services.join(", ")})` : "";
+      const tagDisplay = tag ? `#${tag}` : "";
+      const title = tagDisplay ? `Buffer: ${tagDisplay}${platformsPart}` : `Buffer${platformsPart}`;
+
+      sections.push({
+        key: tag ? `p:buffer:${tag}` : "p:buffer",
+        kind: "platform",
+        title,
+        provider: "buffer",
+        bufferTag: tag || undefined,
+        accounts: sortAccounts(accs, providerName),
+      });
+    }
+
+    return sections.sort((a, b) => collator.compare(a.title, b.title));
   }
 
   const groups = sortGroups(opts.groups ?? []);
   const known = new Set(groups.map((g) => g.id));
-  const hideEmpty = opts.hideEmpty || !!query.trim();
+  const hideEmpty = opts.hideEmpty || !!query.trim() || !!opts.bufferTag;
   const sections: AccountSection[] = groups.map((g) => ({
     key: `g:${g.id}`,
     kind: "group",
@@ -77,7 +153,14 @@ export function buildSections(
     ),
   }));
   const ungrouped = list.filter((a) => !a.groupId || !known.has(a.groupId));
-  if (ungrouped.length) sections.push({ key: UNGROUPED_KEY, kind: "ungrouped", title: groups.length ? "Ungrouped" : "Accounts", accounts: sortAccounts(ungrouped, providerName) });
+  if (ungrouped.length) {
+    sections.push({
+      key: UNGROUPED_KEY,
+      kind: "ungrouped",
+      title: groups.length ? "Ungrouped" : "Accounts",
+      accounts: sortAccounts(ungrouped, providerName),
+    });
+  }
   return hideEmpty ? sections.filter((s) => s.accounts.length) : sections;
 }
 

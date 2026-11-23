@@ -1,4 +1,4 @@
-import { providerDisplayName } from "@shared/providerNames";
+import { bufferServiceDisplayName, providerDisplayName } from "@shared/providerNames";
 import { Select } from "../ui/Form";
 import { groupFilterValue } from "../../lib/accountGroups";
 import { useApp } from "../../lib/app";
@@ -11,8 +11,19 @@ export function AccountFilterSelect({ value, onChange, className }: { value: str
   const { accounts, groups, providerMap } = useApp();
   const names = new Map<string, number>();
   for (const a of accounts) names.set(a.name, (names.get(a.name) ?? 0) + 1);
-  // Same name on several platforms ("Party Games" on Instagram and YouTube): add the platform.
-  const label = (a: (typeof accounts)[number]) => ((names.get(a.name) ?? 0) > 1 ? `${a.name} · ${providerDisplayName(a.provider, providerMap)}` : a.name);
+
+  const label = (a: (typeof accounts)[number]) => {
+    if (a.provider === "buffer") {
+      const serviceDisplay = bufferServiceDisplayName(a.meta?.service);
+      const tag = a.tag || (typeof a.meta?.tag === "string" ? a.meta.tag : undefined) || a.username || "default";
+      return `${a.name} · ${serviceDisplay} (Buffer [#${tag}])`;
+    }
+    const tag = a.tag;
+    const tagPart = tag ? ` [#${tag}]` : "";
+    const base = (names.get(a.name) ?? 0) > 1 ? `${a.name} · ${providerDisplayName(a.provider, providerMap)}` : a.name;
+    return `${base}${tagPart}`;
+  };
+
   const options = accounts.map((a) => (
     <option key={a.id} value={a.id}>
       {label(a)}

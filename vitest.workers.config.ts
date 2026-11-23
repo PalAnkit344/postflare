@@ -9,7 +9,9 @@ export default defineConfig({
   define: buildDefines(),
   test: {
     name: "workers",
-    include: ["test/workers/**/*.test.ts"],
+    include: ["test/workers/**/*.test.ts", "test/e2e/**/*.test.ts"],
+    testTimeout: 60000,
+    hookTimeout: 30000,
     // Vitest 5 defaults to clearing mock call history before every test; keep the Vitest 3/4 behaviour.
     clearMocks: false,
   },

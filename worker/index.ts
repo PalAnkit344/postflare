@@ -17,6 +17,7 @@ import { cronRunStatement, metricsEventsStatement, pruneUsageStatement, type Met
 import { accessRequestPublicRoutes, accessRequestRoutes } from "./routes/accessRequests";
 import { accountGroupRoutes } from "./routes/accountGroups";
 import { accountRoutes } from "./routes/accounts";
+import { agentIngestionRoutes } from "./routes/agentIngestion";
 import { adminRoutes } from "./routes/admin";
 import { analyticsRoutes } from "./routes/analytics";
 import { appLoginRoutes } from "./routes/appLogin";
@@ -80,6 +81,8 @@ api.route("/", adminRoutes);
 api.route("/", billingRoutes);
 api.route("/", billingAdminRoutes);
 api.route("/", supportAdminRoutes);
+api.route("/v1/agent", agentIngestionRoutes);
+api.route("/incoming", agentIngestionRoutes);
 api.notFound((c) => c.json({ error: "Not found" }, 404));
 
 const app = new Hono<AppEnv>();
@@ -123,6 +126,8 @@ app.get("/", async (c) => {
 app.get("/demo", demoPage);
 // Privacy Policy, Terms of Service and Data Deletion with the operator's details (Admin → Settings → Legal & contact).
 app.route("/", legalPages);
+app.route("/api/v1/agent", agentIngestionRoutes);
+app.route("/api/incoming", agentIngestionRoutes);
 app.route("/api", api);
 app.route("/oauth", oauthRoutes);
 app.route("/m", publicMedia);

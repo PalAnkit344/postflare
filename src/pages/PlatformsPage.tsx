@@ -51,6 +51,9 @@ export function PlatformsPage() {
         title="Platforms"
         description={`Developer apps for OAuth platforms. ${configuredCount} configured, ${providers.filter((p) => !needsApp(p)).length} need no setup.`}
       />
+      <Notice className="mb-6">
+        Social media channels (Instagram, Facebook, X, TikTok, YouTube, Threads, LinkedIn, Pinterest) are connected and managed centrally through the <strong>Buffer API connector</strong> on the Accounts page without requiring individual developer app credentials.
+      </Notice>
       <div className="grid gap-6 lg:grid-cols-[320px_minmax(0,1fr)]">
         <Card className={cn("flex max-h-[calc(100vh-180px)] flex-col overflow-hidden lg:sticky lg:top-8", selected && "hidden lg:flex")}>
           <div className="space-y-3 border-b border-zinc-100 p-3 dark:border-zinc-800">

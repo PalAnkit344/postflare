@@ -112,7 +112,14 @@ function PostDrawer({ ids, onClose }: { ids: string[]; onClose: () => void }) {
           <div className="flex items-center gap-3">
             <AccountAvatar account={account} provider={provider} size="md" />
             <div className="min-w-0">
-              <div className="truncate text-sm font-semibold">{account?.name ?? "Deleted account"}</div>
+              <div className="flex items-center gap-1.5 truncate text-sm font-semibold">
+                <span className="truncate">{account?.name ?? "Deleted account"}</span>
+                {(account?.tag || (account?.provider === "buffer" && account?.username)) && (
+                  <span className="inline-flex shrink-0 items-center rounded bg-zinc-100 px-1.5 py-0.5 font-mono text-[10px] font-medium text-zinc-700 ring-1 ring-inset ring-zinc-500/10 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-400/20">
+                    #{account.tag || account.username}
+                  </span>
+                )}
+              </div>
               <div className="truncate text-xs font-normal text-zinc-500">{provider?.name}</div>
             </div>
           </div>

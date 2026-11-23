@@ -34,11 +34,12 @@ import { medium } from "./medium";
 import { wordpress } from "./wordpress";
 import { listmonk } from "./listmonk";
 import { webhook } from "./webhook";
+import { buffer } from "./buffer";
 import type { ProviderInfo } from "../../shared/types";
 import type { Provider } from "./types";
 
 export const providers: Provider[] = [
-  x, linkedin, linkedinPage, facebook, instagram, instagramStandalone, threads, bluesky, mastodon, pinterest, reddit, tumblr, vk, nostr, farcaster, lemmy, dribbble, mewe, skool, whop, moltbook, youtube, tiktok, tiktokBusiness, gmb, twitch, kick, telegram, discord, slack, devto, hashnode, medium, wordpress, listmonk, webhook,
+  x, linkedin, linkedinPage, facebook, instagram, instagramStandalone, threads, bluesky, mastodon, pinterest, reddit, tumblr, vk, nostr, farcaster, lemmy, dribbble, mewe, skool, whop, moltbook, youtube, tiktok, tiktokBusiness, gmb, twitch, kick, telegram, discord, slack, devto, hashnode, medium, wordpress, listmonk, webhook, buffer,
 ];
 
 const byId = new Map(providers.map((p) => [p.id, p]));

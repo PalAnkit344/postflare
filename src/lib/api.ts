@@ -306,6 +306,17 @@ export const api = {
   },
   accounts: {
     list: () => get<AccountDTO[]>("/accounts"),
+    update: (
+      id: string,
+      patch: {
+        name?: string;
+        tag?: string;
+        username?: string;
+        apiKey?: string;
+        status?: "active" | "disabled";
+        groupId?: string | null;
+      },
+    ) => request<AccountDTO>("PATCH", `/accounts/${id}`, patch),
     setStatus: (id: string, status: "active" | "disabled") => request<AccountDTO>("PATCH", `/accounts/${id}`, { status }),
     setGroup: (id: string, groupId: string | null) => request<AccountDTO>("PATCH", `/accounts/${id}`, { groupId }),
     /** Move many accounts at once (one request); `groupId: null` ungroups them. */
@@ -313,6 +324,8 @@ export const api = {
       request<{ ok: true; updated: number; groupId: string | null }>("POST", "/accounts/group", { accountIds, groupId }),
     remove: (id: string) => request<{ ok: true }>("DELETE", `/accounts/${id}`),
     refresh: (id: string) => request<AccountDTO>("POST", `/accounts/${id}/refresh`),
+    syncBuffer: (opts: { tag?: string; accountId?: string } = {}) =>
+      request<{ ok: true; ids: string[]; accounts: AccountDTO[] }>("POST", "/accounts/buffer/sync", opts),
     composerInfo: (id: string) => get<Record<string, unknown>>(`/accounts/${id}/composer-info`),
     options: (id: string, key: string, settings: Record<string, unknown>) =>
       get<FieldOption[]>(`/accounts/${id}/options/${encodeURIComponent(key)}?settings=${encodeURIComponent(JSON.stringify(settings))}`),

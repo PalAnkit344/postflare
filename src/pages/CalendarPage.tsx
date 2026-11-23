@@ -442,6 +442,13 @@ function Chip({ group, dragged, showText }: { group: Group; dragged: React.RefOb
   // Platform logos first: avatars alone don't tell YouTube from Instagram when both use the same profile picture.
   const providers = [...new Set(accs.map((a) => a?.provider).filter(Boolean) as string[])].map((id) => providerMap.get(id));
   const meta = STATUS_META[status];
+  const tags = [
+    ...new Set(
+      accs
+        .map((a) => a?.tag || (a?.provider === "buffer" ? a?.username : null))
+        .filter((t): t is string => Boolean(t)),
+    ),
+  ];
   return (
     <button
       type="button"
@@ -458,7 +465,10 @@ function Chip({ group, dragged, showText }: { group: Group; dragged: React.RefOb
         e.stopPropagation();
         openPost(group.posts.map((p) => p.id));
       }}
-      title={`${accs.map((a) => a?.name ?? "Deleted account").join(", ")} · ${meta.label}\n${truncate(first.content, 200)}`}
+      title={`${accs.map((a) => {
+        const t = a?.tag || (a?.provider === "buffer" ? a?.username : null);
+        return t ? `${a?.name ?? "Deleted account"} (#${t})` : a?.name ?? "Deleted account";
+      }).join(", ")} · ${meta.label}\n${truncate(first.content, 200)}`}
       className={cn(
         "relative flex w-full items-center gap-1.5 overflow-hidden rounded-md bg-white py-1 pl-2 pr-1.5 text-left text-[11px] shadow-sm ring-1 ring-zinc-200 transition hover:shadow hover:ring-zinc-300 dark:bg-zinc-800 dark:ring-zinc-700 dark:hover:ring-zinc-600",
         draggable && "cursor-grab active:cursor-grabbing",
@@ -482,6 +492,27 @@ function Chip({ group, dragged, showText }: { group: Group; dragged: React.RefOb
       </span>
       <span className={cn("size-1.5 shrink-0 rounded-full", meta.dot)} />
       <span className="shrink-0 font-medium tabular-nums text-zinc-700 dark:text-zinc-200">{formatTime(group.at, tz)}</span>
+      {tags.length > 0 && (
+        <span className="flex shrink-0 items-center gap-0.5">
+          {tags.slice(0, 2).map((t) => (
+            <span
+              key={t}
+              className="inline-flex max-w-20 truncate rounded bg-zinc-100 px-1 py-0.5 font-mono text-[9px] font-medium text-zinc-700 ring-1 ring-inset ring-zinc-500/10 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-400/20"
+              title={`Account tag: #${t}`}
+            >
+              #{t}
+            </span>
+          ))}
+          {tags.length > 2 && (
+            <span
+              className="text-[9px] font-mono text-zinc-400"
+              title={tags.slice(2).map((t) => `#${t}`).join(", ")}
+            >
+              +{tags.length - 2}
+            </span>
+          )}
+        </span>
+      )}
       <span className={cn("min-w-0 truncate text-zinc-500 dark:text-zinc-400", !showText && "hidden xl:inline")}>{first.content.replace(/\s+/g, " ") || (first.media.length ? "Media" : "")}</span>
     </button>
   );

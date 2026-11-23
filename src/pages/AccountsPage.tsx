@@ -26,10 +26,12 @@ import {
   Zap,
 } from "lucide-react";
 import { BioLinkDialog } from "../components/campaigns/bits";
-import { providerDisplayName } from "@shared/providerNames";
+import { bufferServiceDisplayName, providerDisplayName } from "@shared/providerNames";
 import { MetricsStatusBadge } from "../components/analytics/bits";
 import { GroupBadge, GroupDialog, GroupDot, ManageGroupsDialog, MoveToGroupItems, useMoveToGroup } from "../components/accounts/AccountGroups";
+import { BufferOverviewDialog } from "../components/accounts/BufferOverviewDialog";
 import { ConnectDialog } from "../components/accounts/ConnectDialog";
+import { EditAccountDialog } from "../components/accounts/EditAccountDialog";
 import { AccountAvatar, ProviderLogo } from "../components/ProviderLogo";
 import { ProviderStatusBadge } from "../components/ProviderStatusBadge";
 import { Button, IconButton } from "../components/ui/Button";
@@ -103,6 +105,9 @@ export function AccountsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [manageOpen, setManageOpen] = useState(false);
   const [newGroupFor, setNewGroupFor] = useState<string[] | null>(null);
+  const [editingAccount, setEditingAccount] = useState<AccountDTO | null>(null);
+  const [selectedBufferTag, setSelectedBufferTag] = useState<string | null>(null);
+  const [bufferOverviewTag, setBufferOverviewTag] = useState<string | null>(null);
   const move = useMoveToGroup();
 
   // Return from an OAuth flow.
@@ -139,7 +144,10 @@ export function AccountsPage() {
 
   // Fallback names: right after an OAuth redirect the accounts can load before the provider catalog.
   const providerName = useCallback((id: string) => providerDisplayName(id, providerMap), [providerMap]);
-  const sections = useMemo(() => buildSections(accounts, view, { groups, providerName, query: q }), [accounts, view, groups, providerName, q]);
+  const sections = useMemo(
+    () => buildSections(accounts, view, { groups, providerName, query: q, bufferTag: selectedBufferTag }),
+    [accounts, view, groups, providerName, q, selectedBufferTag],
+  );
   const visible = useMemo(() => sections.flatMap((s) => s.accounts), [sections]);
   const searching = !!q.trim();
   const sectioned = view !== "all";
@@ -240,6 +248,28 @@ export function AccountsPage() {
             )}
           </div>
 
+          {selectedBufferTag && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-zinc-200 bg-zinc-50/80 px-4 py-2.5 text-sm dark:border-zinc-800 dark:bg-zinc-800/50">
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-500 dark:text-zinc-400">Filtering Buffer Account:</span>
+                <span className="inline-flex items-center rounded-md bg-zinc-200/70 px-2 py-0.5 font-mono text-xs font-semibold text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200">
+                  #{selectedBufferTag}
+                </span>
+                <span className="text-xs text-zinc-400">
+                  ({visible.length} {visible.length === 1 ? "platform" : "platforms"})
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button size="sm" variant="secondary" onClick={() => setBufferOverviewTag(selectedBufferTag)}>
+                  Account Overview
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelectedBufferTag(null)}>
+                  Clear filter
+                </Button>
+              </div>
+            </div>
+          )}
+
           {selecting && (
             <div className="sticky top-2 z-30 mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-white/95 px-3 py-2 shadow-md ring-1 ring-zinc-200 backdrop-blur dark:bg-zinc-900/95 dark:ring-zinc-700">
               <Checkbox
@@ -281,9 +311,27 @@ export function AccountsPage() {
             </div>
           )}
 
-          {!visible.length && (searching || view !== "group") ? (
+          {!visible.length && (searching || view !== "group" || selectedBufferTag) ? (
             <Card>
-              <EmptyState icon={<Search />} title="No accounts match" description={`Nothing named or @${q.trim().replace(/^@/, "")}.`} action={<Button onClick={() => setQ("")}>Clear search</Button>} />
+              <EmptyState
+                icon={<Search />}
+                title="No accounts match"
+                description={
+                  selectedBufferTag
+                    ? `No accounts found for Buffer tag #${selectedBufferTag}.`
+                    : `Nothing named or @${q.trim().replace(/^@/, "")}.`
+                }
+                action={
+                  <Button
+                    onClick={() => {
+                      setQ("");
+                      setSelectedBufferTag(null);
+                    }}
+                  >
+                    Clear {selectedBufferTag ? "filter" : "search"}
+                  </Button>
+                }
+              />
             </Card>
           ) : !sectioned ? (
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
@@ -294,6 +342,9 @@ export function AccountsPage() {
                   provider={providerMap.get(a.provider)}
                   group={a.groupId ? groupMap.get(a.groupId) : undefined}
                   onReconnect={() => setConnect({ provider: a.provider })}
+                  onEdit={(acc) => setEditingAccount(acc)}
+                  onFilterTag={(t) => setSelectedBufferTag(t)}
+                  onOverview={(t) => setBufferOverviewTag(t)}
                   hasApps={hasApps}
                   selecting={selecting}
                   selected={selected.has(a.id)}
@@ -331,6 +382,38 @@ export function AccountsPage() {
                         <h2 className="truncate text-sm font-semibold text-zinc-900 dark:text-zinc-100">{s.title}</h2>
                         <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-xs font-medium tabular-nums text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400">{s.accounts.length}</span>
                       </button>
+                      {s.bufferTag && (
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setBufferOverviewTag(s.bufferTag!);
+                            }}
+                            className="gap-1.5"
+                          >
+                            <Layers className="size-3.5" />
+                            Manage Channels
+                          </Button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedBufferTag(selectedBufferTag === s.bufferTag ? null : s.bufferTag!);
+                            }}
+                            className={cn(
+                              "rounded-md px-2 py-1 text-xs font-medium transition cursor-pointer",
+                              selectedBufferTag === s.bufferTag
+                                ? "bg-brand-600 text-white"
+                                : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700"
+                            )}
+                            title={`Filter to see only platforms for Buffer account #${s.bufferTag}`}
+                          >
+                            {selectedBufferTag === s.bufferTag ? "Filtered" : "Filter"}
+                          </button>
+                        </div>
+                      )}
                       {s.kind === "group" && canManage && s.group && (
                         <IconButton label={`Edit ${s.title}`} size="sm" onClick={() => setManageOpen(true)} className="opacity-70 hover:opacity-100">
                           <Pencil className="size-3.5" />
@@ -348,6 +431,9 @@ export function AccountsPage() {
                               provider={providerMap.get(a.provider)}
                               group={view === "platform" && a.groupId ? groupMap.get(a.groupId) : undefined}
                               onReconnect={() => setConnect({ provider: a.provider })}
+                              onEdit={(acc) => setEditingAccount(acc)}
+                              onFilterTag={(t) => setSelectedBufferTag(t)}
+                              onOverview={(t) => setBufferOverviewTag(t)}
                               hasApps={hasApps}
                               selecting={selecting}
                               selected={selected.has(a.id)}
@@ -388,6 +474,18 @@ export function AccountsPage() {
           if (await move(ids, g.id, ids.length === 1 ? accounts.find((a) => a.id === ids[0])?.name : undefined)) stopSelecting();
         }}
       />
+      <EditAccountDialog
+        open={!!editingAccount}
+        account={editingAccount}
+        onClose={() => setEditingAccount(null)}
+      />
+      <BufferOverviewDialog
+        open={!!bufferOverviewTag}
+        tag={bufferOverviewTag}
+        accounts={accounts}
+        onClose={() => setBufferOverviewTag(null)}
+        onFilterTag={(t) => setSelectedBufferTag(t)}
+      />
     </>
   );
 }
@@ -415,6 +513,9 @@ function AccountCard({
   provider,
   group,
   onReconnect,
+  onEdit,
+  onFilterTag,
+  onOverview,
   hasApps,
   selecting,
   selected,
@@ -426,6 +527,9 @@ function AccountCard({
   /** Shown as a badge (views where the section does not already say it). */
   group?: AccountGroupDTO;
   onReconnect: () => void;
+  onEdit?: (account: AccountDTO) => void;
+  onFilterTag?: (tag: string) => void;
+  onOverview?: (tag: string) => void;
   hasApps?: boolean;
   selecting?: boolean;
   selected?: boolean;
@@ -441,6 +545,11 @@ function AccountCard({
   const { can } = useSession();
   const canManage = can("accounts.manage");
   const [busy, setBusy] = useState<string | null>(null);
+
+  const isBuffer = a.provider === "buffer";
+  const bufferTag = (a.tag ?? (typeof a.meta?.tag === "string" ? a.meta.tag : undefined) ?? (isBuffer ? a.username : undefined))?.trim().replace(/^#/, "");
+  const bufferService = isBuffer && typeof a.meta?.service === "string" ? a.meta.service : null;
+  const bufferPlatformName = bufferService ? bufferServiceDisplayName(bufferService) : null;
   const run = async (key: string, fn: () => Promise<unknown>, success: string) => {
     setBusy(key);
     try {
@@ -503,11 +612,55 @@ function AccountCard({
               )}
             </p>
           )}
-          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-500">
-            <ProviderLogo provider={provider} size="xs" />
-            {provider?.name ?? providerDisplayName(a.provider)}
-            {provider?.status === "experimental" && <ProviderStatusBadge provider={provider} className="px-1.5 py-0 text-[10px]" />}
-          </p>
+          {isBuffer ? (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => bufferTag && onOverview?.(bufferTag)}
+                title="Click to view all channels in this Buffer account"
+                className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-800 ring-1 ring-inset ring-zinc-500/10 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-200 dark:ring-zinc-400/20 dark:hover:bg-zinc-700 transition cursor-pointer"
+              >
+                <ProviderLogo provider={provider} service={bufferService} size="xs" />
+                {bufferPlatformName ? `${bufferPlatformName} via Buffer` : "Buffer Channel"}
+              </button>
+              {bufferTag && (
+                <button
+                  type="button"
+                  onClick={() => onOverview?.(bufferTag)}
+                  title={`View all channels under Buffer account #${bufferTag}`}
+                  className="inline-flex items-center gap-1 rounded-md bg-brand-50 px-1.5 py-0.5 font-mono text-xs font-medium text-brand-700 ring-1 ring-inset ring-brand-500/20 hover:bg-brand-100 dark:bg-brand-950/40 dark:text-brand-300 dark:ring-brand-500/30 dark:hover:bg-brand-900/40 transition cursor-pointer"
+                >
+                  <Layers className="size-3" />
+                  #{bufferTag}
+                </button>
+              )}
+              {bufferTag && (
+                <button
+                  type="button"
+                  onClick={() => onOverview?.(bufferTag)}
+                  title="View all channels under this Buffer account"
+                  className="inline-flex items-center gap-1 rounded-md bg-zinc-100 px-1.5 py-0.5 text-[11px] font-medium text-zinc-600 hover:bg-zinc-200 dark:bg-zinc-800 dark:text-zinc-300 dark:hover:bg-zinc-700 transition cursor-pointer"
+                >
+                  Manage Channels
+                </button>
+              )}
+            </div>
+          ) : (
+            <>
+              {a.tag && (
+                <div className="mt-1 flex items-center gap-1">
+                  <span className="inline-flex items-center rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono text-xs font-medium text-zinc-700 ring-1 ring-inset ring-zinc-500/10 dark:bg-zinc-800 dark:text-zinc-300 dark:ring-zinc-400/20">
+                    #{a.tag}
+                  </span>
+                </div>
+              )}
+              <p className="mt-1.5 flex items-center gap-1.5 text-xs text-zinc-500">
+                <ProviderLogo provider={provider} size="xs" />
+                {provider?.name ?? providerDisplayName(a.provider)}
+                {provider?.status === "experimental" && <ProviderStatusBadge provider={provider} className="px-1.5 py-0 text-[10px]" />}
+              </p>
+            </>
+          )}
           {group && <GroupBadge group={group} className="mt-1.5" />}
         </div>
         {a.status === "active" ? (
@@ -599,6 +752,23 @@ function AccountCard({
         )}
         {canManage && (
         <>
+        {isBuffer && bufferTag && (
+          <IconButton
+            label="Buffer account overview"
+            size="sm"
+            onClick={() => onOverview?.(bufferTag)}
+          >
+            <Layers className="size-4" />
+          </IconButton>
+        )}
+        <IconButton
+          label="Edit account"
+          size="sm"
+          disabled={!!busy}
+          onClick={() => onEdit?.(a)}
+        >
+          <Pencil className="size-4" />
+        </IconButton>
         <Menu
           trigger={(props) => (
             <IconButton {...props} label="Move to group…" size="sm">

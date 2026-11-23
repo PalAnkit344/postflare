@@ -36,9 +36,9 @@ const SELF_HOSTED: LegalContext = { host: "social.example.org", legal: EMPTY_LEG
 describe("static fallbacks", () => {
   for (const [file, render] of FILES) {
     it(`${file} is the generic rendering`, () => {
-      const html = render(STATIC_CONTEXT);
+      const html = render(STATIC_CONTEXT).replace(/\r\n/g, "\n");
       if (process.env.UPDATE_LEGAL) writeFileSync(file, html);
-      expect(readFileSync(file, "utf8"), `${file} is stale: run UPDATE_LEGAL=1 npx vitest run test/legal.test.ts`).toBe(html);
+      expect(readFileSync(file, "utf8").replace(/\r\n/g, "\n"), `${file} is stale: run UPDATE_LEGAL=1 npx vitest run test/legal.test.ts`).toBe(html);
     });
   }
 });

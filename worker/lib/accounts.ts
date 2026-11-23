@@ -52,12 +52,19 @@ export function publicExternalId(provider: string, externalId: string): string {
 }
 
 export function accountDto(row: AccountRow): AccountDTO {
+  const meta = parseJson<Record<string, unknown>>(row.meta, {});
+  delete meta.apiKey;
+  delete meta.accessToken;
+  delete meta.token;
+  delete meta.secret;
   return {
     id: row.id,
     provider: row.provider,
     externalId: publicExternalId(row.provider, row.external_id),
     name: row.name,
     username: row.username,
+    tag: (typeof meta.tag === "string" ? meta.tag : null) || row.username,
+    meta,
     avatarUrl: row.avatar_url,
     profileUrl: row.profile_url,
     status: row.status,

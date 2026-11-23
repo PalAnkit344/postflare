@@ -7,7 +7,7 @@ export default defineConfig({
     clearMocks: false,
     projects: [
       // Unit tests (providers mock ctx.fetch) in Node.
-      { test: { name: "node", include: ["test/**/*.test.ts"], exclude: ["test/workers/**"], environment: "node" } },
+      { test: { name: "node", include: ["test/**/*.test.ts"], exclude: ["test/workers/**", "test/e2e/**"], environment: "node" } },
       // The `postflare` CLI (cli/), plain Node.
       { test: { name: "cli", include: ["cli/test/**/*.test.ts"], environment: "node" } },
       // Integration tests: the real app against a local D1/R2 inside workerd.

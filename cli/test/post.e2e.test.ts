@@ -246,7 +246,9 @@ describe("other commands against the fake API", () => {
     expect(await run(["login", "--url", "pf.example.com/", "--profile", "work"], { ...deps, env, fetch, readStdin: async () => "pf_good\n" })).toBe(0);
     const saved = JSON.parse(readFileSync(cfgPath, "utf8"));
     expect(saved).toEqual({ current: "work", profiles: { work: { url: "https://pf.example.com", key: "pf_good" } } });
-    expect(statSync(cfgPath).mode & 0o777).toBe(0o600);
+    if (process.platform !== "win32") {
+      expect(statSync(cfgPath).mode & 0o777).toBe(0o600);
+    }
     out = "";
     expect(await run(["whoami", "--json"], { ...deps, env, fetch })).toBe(0);
     expect(JSON.parse(out)).toMatchObject({ url: "https://pf.example.com", profile: "work", source: "config", workspace: { name: "Apps" } });

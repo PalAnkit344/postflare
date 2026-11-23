@@ -17,9 +17,9 @@ afterEach(() => vi.restoreAllMocks());
 
 describe("skill install", () => {
   it("bundles the current skills/postflare/SKILL.md (run npm run cli:build when this fails)", () => {
-    const source = readFileSync(new URL("../../skills/postflare/SKILL.md", import.meta.url), "utf8");
-    expect(SKILL_MD).toBe(source);
-    expect(SKILL_MD).toMatch(/^---\nname: postflare\n/);
+    const source = readFileSync(new URL("../../skills/postflare/SKILL.md", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+    expect(SKILL_MD.replace(/\r\n/g, "\n")).toBe(source);
+    expect(SKILL_MD.replace(/\r\n/g, "\n")).toMatch(/^---\nname: postflare\n/);
   });
 
   it("installs into ~/.claude/skills/postflare by default, then reports unchanged / updated", async () => {

@@ -211,12 +211,24 @@ export interface AccountMetricsStatusDTO {
   metrics: MetricValues | null;
 }
 
+export interface BufferAccountMeta {
+  tag?: string;
+  channelId?: string;
+  service?: string | null;
+  serviceId?: string | null;
+  organizationId?: string | null;
+  rest?: boolean;
+  [key: string]: unknown;
+}
+
 export interface AccountDTO {
   id: string;
   provider: string;
   externalId: string;
   name: string;
   username: string | null;
+  tag?: string | null;
+  meta?: Record<string, unknown> & BufferAccountMeta;
   avatarUrl: string | null;
   profileUrl: string | null;
   status: "active" | "disabled" | "reconnect";

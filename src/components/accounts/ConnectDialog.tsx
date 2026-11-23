@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router";
-import { ArrowLeft, ArrowRight, FlaskConical, KeyRound, Lock, Search, Settings2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, FlaskConical, KeyRound, Lock, Search, Settings2, Sparkles } from "lucide-react";
 import { api, isPlanLimit } from "../../lib/api";
 import { useApp } from "../../lib/app";
 import { cn } from "../../lib/format";
@@ -27,6 +27,9 @@ export const CATEGORY_LABELS: Record<ProviderCategory, string> = {
 };
 export const CATEGORY_ORDER: ProviderCategory[] = ["social", "video", "community", "messaging", "blog", "newsletter"];
 
+import { DIRECT_SOCIAL_PROVIDERS, BUFFER_SEARCH_ALIASES } from "../../../shared/providerNames";
+export { DIRECT_SOCIAL_PROVIDERS, BUFFER_SEARCH_ALIASES };
+
 export function ConnectDialog({ open, onClose, initialProvider }: { open: boolean; onClose: () => void; initialProvider?: string | null }) {
   const { providers, providerMap } = useApp();
   const [q, setQ] = useState("");
@@ -36,18 +39,24 @@ export function ConnectDialog({ open, onClose, initialProvider }: { open: boolea
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const toast = useToast();
 
+  const bufferProvider = useMemo(() => providerMap.get("buffer") ?? providers.find((p) => p.id === "buffer"), [providerMap, providers]);
+
   useEffect(() => {
     if (!open) return;
     setQ("");
     setRedirecting(null);
     setAuthUrl(null);
-    setSelected(initialProvider ? (providerMap.get(initialProvider) ?? null) : null);
-    if (initialProvider) {
-      const p = providerMap.get(initialProvider);
-      // Platforms that offer "use a different account" wait on the Continue screen so the choice can be made.
-      if (p && p.enabled && p.allowed !== false && p.auth === "oauth2" && p.configured && !p.switchAccount) void startOAuth(p);
+    let target = initialProvider ? (providerMap.get(initialProvider) ?? null) : null;
+    // If a replaced native direct social provider is requested, automatically route to Buffer
+    if (target && DIRECT_SOCIAL_PROVIDERS.has(target.id)) {
+      target = bufferProvider ?? providerMap.get("buffer") ?? null;
     }
-  }, [open, initialProvider]); // eslint-disable-line react-hooks/exhaustive-deps
+    setSelected(target);
+    if (target && target.id !== "buffer") {
+      // Platforms that offer "use a different account" wait on the Continue screen so the choice can be made.
+      if (target.enabled && target.allowed !== false && target.auth === "oauth2" && target.configured && !target.switchAccount) void startOAuth(target);
+    }
+  }, [open, initialProvider, bufferProvider, providerMap]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function startOAuth(p: Provider, switchAccount = false) {
     setRedirecting(p.id);
@@ -67,12 +76,29 @@ export function ConnectDialog({ open, onClose, initialProvider }: { open: boolea
     else setSelected(p);
   }
 
+  const needle = q.trim().toLowerCase();
+  const bufferMatches = useMemo(() => {
+    if (!bufferProvider) return false;
+    if (!needle) return true;
+    return (
+      bufferProvider.name.toLowerCase().includes(needle) ||
+      bufferProvider.id.includes(needle) ||
+      BUFFER_SEARCH_ALIASES.some((alias) => alias.includes(needle) || needle.includes(alias))
+    );
+  }, [bufferProvider, needle]);
+
   const groups = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    // Experimental platforms stay hidden until an instance admin enables them.
-    const list = providers.filter((p) => p.enabled && p.allowed !== false && (!needle || p.name.toLowerCase().includes(needle) || p.id.includes(needle)));
+    // Direct social networks removed in favor of Buffer; Buffer rendered in prominent hero card
+    const list = providers.filter(
+      (p) =>
+        !DIRECT_SOCIAL_PROVIDERS.has(p.id) &&
+        p.id !== "buffer" &&
+        p.enabled &&
+        p.allowed !== false &&
+        (!needle || p.name.toLowerCase().includes(needle) || p.id.includes(needle)),
+    );
     return CATEGORY_ORDER.map((c) => ({ category: c, items: list.filter((p) => p.category === c) })).filter((g) => g.items.length);
-  }, [providers, q]);
+  }, [providers, needle]);
 
   return (
     <Dialog
@@ -80,7 +106,7 @@ export function ConnectDialog({ open, onClose, initialProvider }: { open: boolea
       onClose={onClose}
       size="lg"
       title={selected ? <BackTitle provider={selected} onBack={initialProvider ? undefined : () => setSelected(null)} /> : "Connect an account"}
-      description={selected ? undefined : "Choose a platform. You can connect as many accounts as you like."}
+      description={selected ? undefined : "Choose a platform. Connect social channels via Buffer or choose other platforms below."}
     >
       {selected ? (
         selected.allowed === false ? (
@@ -135,7 +161,50 @@ export function ConnectDialog({ open, onClose, initialProvider }: { open: boolea
             <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-zinc-400" />
             <Input data-autofocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search platforms…" className="pl-9" aria-label="Search platforms" />
           </div>
-          {!groups.length && <p className="py-10 text-center text-sm text-zinc-500">No platform matches “{q}”.</p>}
+
+          {/* Prominently feature Buffer as the Unified Social Media Connector */}
+          {bufferProvider && bufferMatches && (
+            <div className="mb-6 overflow-hidden rounded-2xl border-2 border-brand-500/30 bg-gradient-to-br from-brand-500/10 via-brand-50/40 to-transparent p-5 shadow-sm transition-all hover:border-brand-500/50 hover:shadow-md dark:border-brand-500/40 dark:from-brand-950/40 dark:via-zinc-900 dark:to-transparent">
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-start gap-3.5">
+                  <div className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-white p-2 shadow-sm ring-1 ring-zinc-200 dark:bg-zinc-800 dark:ring-zinc-700">
+                    <ProviderLogo provider={bufferProvider} size="lg" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                        Buffer (Unified Social Connector)
+                      </h3>
+                      <Badge tone="brand">Unified Connector</Badge>
+                    </div>
+                    <p className="mt-1 text-xs leading-relaxed text-zinc-600 dark:text-zinc-300">
+                      Connect all your social channels (Instagram, Facebook, X, TikTok, YouTube, Threads, LinkedIn, Pinterest) through Buffer. Supports up to 50 distinct Buffer accounts with independent account tags and channel selection.
+                    </p>
+                    <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-400">
+                      <span className="font-medium text-zinc-700 dark:text-zinc-300">Connected channels:</span>
+                      {["Instagram", "Facebook", "X", "TikTok", "YouTube", "Threads", "LinkedIn", "Pinterest"].map((net) => (
+                        <span key={net} className="rounded-md bg-white/80 px-1.5 py-0.5 font-medium text-zinc-700 ring-1 ring-zinc-200/80 dark:bg-zinc-800/80 dark:text-zinc-300 dark:ring-zinc-700">
+                          {net}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+                <div className="shrink-0 sm:self-center">
+                  <Button
+                    variant="primary"
+                    onClick={() => setSelected(bufferProvider)}
+                    className="w-full sm:w-auto"
+                  >
+                    Connect Buffer Account
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {!groups.length && !bufferMatches && <p className="py-10 text-center text-sm text-zinc-500">No platform matches “{q}”.</p>}
+
           <div className="space-y-6">
             {groups.map((g) => (
               <section key={g.category}>
@@ -320,6 +389,20 @@ function CredentialsForm({ provider, onDone }: { provider: Provider; onDone: () 
   return (
     <form onSubmit={submit}>
       <div className="space-y-5 p-6">
+        {provider.id === "buffer" && (
+          <div className="rounded-xl border border-brand-500/30 bg-brand-50/70 p-4 text-xs text-brand-950 dark:border-brand-500/40 dark:bg-brand-950/30 dark:text-brand-200">
+            <div className="flex items-center gap-2 text-sm font-semibold text-brand-900 dark:text-brand-100">
+              <Sparkles className="size-4 text-brand-600 dark:text-brand-400" />
+              Unified Social Media Connector
+            </div>
+            <p className="mt-1 leading-relaxed">
+              Postflare connects to all your social networks through Buffer. When you connect a Buffer account, all its channels (Instagram, Facebook, X, TikTok, YouTube, Threads, LinkedIn, Pinterest) are automatically discovered and made available for scheduling and publishing.
+            </p>
+            <div className="mt-2 text-zinc-600 dark:text-zinc-400">
+              <strong className="text-zinc-800 dark:text-zinc-200">Multi-Account Tip:</strong> Assign a unique Account Tag (e.g. <span className="font-mono text-brand-700 dark:text-brand-300">brand-alpha</span>, <span className="font-mono text-brand-700 dark:text-brand-300">client-main</span>). You can connect and manage up to 50 distinct Buffer accounts with independent channel selection.
+            </div>
+          </div>
+        )}
         {provider.setupNotes && (
           <div className="rounded-xl bg-zinc-50 p-4 ring-1 ring-zinc-200 dark:bg-zinc-800/40 dark:ring-zinc-800">
             <Markdown source={provider.setupNotes} vars={{ redirectUri: provider.redirectUri, baseUrl: new URL(provider.redirectUri).origin }} />

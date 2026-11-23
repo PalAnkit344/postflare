@@ -34,4 +34,10 @@ interface Env {
   APNS_TOPIC?: string;
   /** Optional App Store URL of the Postflare iOS app: the sign-in page offers "Sign in with the iPhone app" and "Get the app". */
   APP_STORE_URL?: string;
+  /** Base URL of the creator research agent (defaults to https://creator-research-db.gamingshort205.workers.dev). */
+  CREATOR_RESEARCH_AGENT_URL?: string;
+  /** Bearer API key for authenticating with the creator research agent. */
+  CREATOR_RESEARCH_API_KEY?: string;
+  /** Optional dedicated Cloudflare R2 bucket binding for research data and video records. Defaults to MEDIA. */
+  RESEARCH_STORAGE?: R2Bucket;
 }

@@ -80,6 +80,40 @@ describe("buildSections", () => {
     expect(shape(buildSections(ACCOUNTS, "all"))).toEqual([["all", "All accounts", ACCOUNTS.map((a) => a.id)]]);
   });
 
+  it("platform view with Buffer accounts: groups by Buffer tag with platform summary and supports bufferTag filtering", () => {
+    const bufferAccs = [
+      {
+        ...acc("b1", "buffer", "brand-main (Instagram)", null),
+        tag: "brand-main",
+        meta: { service: "instagram", tag: "brand-main", channelId: "ch_ig" },
+      },
+      {
+        ...acc("b2", "buffer", "brand-main (Threads)", null),
+        tag: "brand-main",
+        meta: { service: "threads", tag: "brand-main", channelId: "ch_threads" },
+      },
+      {
+        ...acc("b3", "buffer", "personal (YouTube)", null),
+        tag: "personal",
+        meta: { service: "youtube", tag: "personal", channelId: "ch_yt" },
+      },
+      acc("a1", "bluesky", "Bluesky Account", "bsky"),
+    ];
+
+    const sections = buildSections(bufferAccs, "platform");
+    expect(sections.map((s) => [s.key, s.title, s.accounts.map((a) => a.id)])).toEqual([
+      ["p:bluesky", "bluesky", ["a1"]],
+      ["p:buffer:brand-main", "Buffer: #brand-main (Instagram, Threads)", ["b1", "b2"]],
+      ["p:buffer:personal", "Buffer: #personal (YouTube)", ["b3"]],
+    ]);
+
+    // Filtering by bufferTag "brand-main"
+    const filtered = buildSections(bufferAccs, "platform", { bufferTag: "brand-main" });
+    expect(filtered.map((s) => [s.key, s.title, s.accounts.map((a) => a.id)])).toEqual([
+      ["p:buffer:brand-main", "Buffer: #brand-main (Instagram, Threads)", ["b1", "b2"]],
+    ]);
+  });
+
   it("search filters every view by name or @username and hides empty sections", () => {
     expect(shape(buildSections(ACCOUNTS, "group", { groups: GROUPS, query: "airport" }))).toEqual([["g:g_ao", "Airport Officer", ["a3", "a6"]]]);
     expect(shape(buildSections(ACCOUNTS, "platform", { providerName, query: "@postflare" }))).toEqual([["p:x", "X", ["a4"]]]);
