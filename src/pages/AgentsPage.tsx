@@ -61,6 +61,7 @@ export function AgentsPage() {
   const [jobs, setJobs] = useState<any[]>([]);
   const [loadingJobs, setLoadingJobs] = useState(true);
   const [processingDue, setProcessingDue] = useState(false);
+  const [syncingDb, setSyncingDb] = useState(false);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [actionBusy, setActionBusy] = useState<string | null>(null);
 
@@ -168,6 +169,23 @@ export function AgentsPage() {
       setTestResult(null);
     } catch (err) {
       toast.error("Failed to disconnect", err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  // Sync from CloudReel D1
+  const handleSyncDb = async () => {
+    setSyncingDb(true);
+    try {
+      const res = await api.cloudreel.syncDb();
+      toast.success(
+        "Synced from CloudReel D1",
+        `Synced ${res.result.syncedVideos} video(s) and ${res.result.syncedJobs} job(s).`,
+      );
+      await loadJobs();
+    } catch (err) {
+      toast.error("Sync failed", err instanceof Error ? err.message : String(err));
+    } finally {
+      setSyncingDb(false);
     }
   };
 
@@ -514,6 +532,15 @@ export function AgentsPage() {
 
             {canManage && (
               <div className="flex items-center gap-2 shrink-0">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<RefreshCw className={cn("size-3.5", syncingDb && "animate-spin")} />}
+                  loading={syncingDb}
+                  onClick={handleSyncDb}
+                >
+                  Sync from CloudReel D1
+                </Button>
                 <Button
                   variant="primary"
                   size="sm"

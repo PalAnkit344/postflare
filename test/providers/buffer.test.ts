@@ -435,6 +435,12 @@ describe("buffer provider", () => {
         needsApproval: false,
         dueAt: new Date(futureTime).toISOString(),
         assets: [{ video: { url: "https://pf.example.com/m/vid_1/sig/clip.mp4", metadata: { thumbnailOffset: 0 } } }],
+        metadata: {
+          instagram: {
+            type: "reel",
+            shouldShareToFeed: true,
+          },
+        },
       });
     });
 

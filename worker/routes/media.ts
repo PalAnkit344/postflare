@@ -390,6 +390,17 @@ export function num(v: string | undefined): number | null {
  */
 export const publicMedia = new Hono<AppEnv>();
 
+const CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+  "Access-Control-Allow-Headers": "Range, Content-Type",
+  "Access-Control-Expose-Headers": "Content-Range, Content-Length, Accept-Ranges, ETag",
+  "Access-Control-Max-Age": "86400",
+} as const;
+
+publicMedia.options("*", () => new Response(null, { status: 204, headers: CORS_HEADERS }));
+publicMedia.options("/:id/:sig/:name?", () => new Response(null, { status: 204, headers: CORS_HEADERS }));
+
 /**
  * Account avatar copied to R2 (lib/avatars.ts): /m/avatars/:signature/:name, used when MEDIA_PUBLIC_URL is not set.
  * Before the media route, which would take "avatars" for a media id. No D1 read.
@@ -430,15 +441,22 @@ publicMedia.on(["GET", "HEAD"], "/:id/:sig/thumb/:name", async (c) => {
 publicMedia.on(["GET", "HEAD"], "/:id/:sig/:name?", async (c) => {
   const id = c.req.param("id");
   if (!(await verifySignature(c.env, `media:${id}`, c.req.param("sig")))) return c.text("Not found", 404);
-  const row = await c.env.DB.prepare("SELECT r2_key, mime FROM media WHERE id = ? AND status = 'ready'")
+  let row = await c.env.DB.prepare("SELECT r2_key, mime FROM media WHERE id = ? AND status = 'ready'")
     .bind(id)
     .first<{ r2_key: string; mime: string }>();
+  if (!row) {
+    row = await c.env.DB.prepare("SELECT r2_key, content_type AS mime FROM cloudreel_videos WHERE video_id = ?")
+      .bind(id)
+      .first<{ r2_key: string; mime: string }>();
+  }
   if (!row) return c.text("Not found", 404);
 
   const headers = new Headers({
     "content-type": row.mime,
     "accept-ranges": "bytes",
     "cache-control": "public, max-age=31536000, immutable",
+    "access-control-allow-origin": "*",
+    "access-control-expose-headers": "Content-Range, Content-Length, Accept-Ranges, ETag",
   });
   if (c.req.method === "HEAD") {
     const head = await c.env.MEDIA.head(row.r2_key);
@@ -454,7 +472,15 @@ publicMedia.on(["GET", "HEAD"], "/:id/:sig/:name?", async (c) => {
     // R2 rejects ranges past the end of the object.
     if (!c.req.header("range")) throw err;
     const head = await c.env.MEDIA.head(row.r2_key);
-    return new Response(null, { status: 416, headers: head ? { "content-range": `bytes */${head.size}` } : {} });
+    return new Response(null, {
+      status: 416,
+      headers: {
+        "access-control-allow-origin": "*",
+        "access-control-expose-headers": "Content-Range, Content-Length, Accept-Ranges, ETag",
+        "accept-ranges": "bytes",
+        ...(head ? { "content-range": `bytes */${head.size}` } : {}),
+      },
+    });
   }
   if (!obj) return c.text("Not found", 404);
   headers.set("etag", obj.httpEtag);

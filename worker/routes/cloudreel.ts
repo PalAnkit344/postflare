@@ -3,6 +3,7 @@ import { authenticate, requirePermission, wsId, type AppEnv } from "../lib/auth"
 import {
   ingestCloudReelManifest,
   processDueCloudReelJobs,
+  syncFromCloudReelDb,
   type CloudReelManifest,
 } from "../lib/cloudreel";
 import {
@@ -44,6 +45,11 @@ cloudreelRoutes.post("/manifest", requirePermission("posts.write"), async (c) =>
  */
 cloudreelRoutes.get("/jobs", requirePermission("posts.read"), async (c) => {
   const workspaceId = wsId(c);
+  // Live auto-sync from Creator Agent cloudreel-db if bound
+  if (c.env.CLOUDREEL_DB) {
+    await syncFromCloudReelDb(c.env, workspaceId).catch((err) => console.warn("Live sync error:", err));
+  }
+
   const status = c.req.query("status");
   const limit = Math.min(Number(c.req.query("limit")) || 50, 100);
 
@@ -66,6 +72,15 @@ cloudreelRoutes.get("/jobs", requirePermission("posts.read"), async (c) => {
 
   const { results } = await c.env.DB.prepare(query).bind(...binds).all();
   return c.json({ jobs: results });
+});
+
+/**
+ * Manually syncs videos and upload_jobs from Creator Agent D1 database (cloudreel-db).
+ */
+cloudreelRoutes.post("/sync", requirePermission("posts.write"), async (c) => {
+  const workspaceId = wsId(c);
+  const result = await syncFromCloudReelDb(c.env, workspaceId);
+  return c.json({ ok: true, result });
 });
 
 /**
@@ -110,6 +125,12 @@ cloudreelRoutes.post("/jobs/:id/approve", requirePermission("posts.write"), asyn
     return c.json({ error: "Job not found" }, 404);
   }
 
+  if (c.env.CLOUDREEL_DB) {
+    await c.env.CLOUDREEL_DB.prepare(
+      `UPDATE upload_jobs SET approved = 1, updated_at = ? WHERE job_id = ?`
+    ).bind(new Date().toISOString(), jobId).run().catch(() => {});
+  }
+
   return c.json({ ok: true, approved: true });
 });
 
@@ -137,6 +158,12 @@ cloudreelRoutes.post("/jobs/:id/retry", requirePermission("posts.write"), async 
     return c.json({ error: "Job not found" }, 404);
   }
 
+  if (c.env.CLOUDREEL_DB) {
+    await c.env.CLOUDREEL_DB.prepare(
+      `UPDATE upload_jobs SET status = 'READY', attempt_count = 0, updated_at = ? WHERE job_id = ?`
+    ).bind(new Date().toISOString(), jobId).run().catch(() => {});
+  }
+
   return c.json({ ok: true, retried: true });
 });
 
@@ -145,6 +172,9 @@ cloudreelRoutes.post("/jobs/:id/retry", requirePermission("posts.write"), async 
  */
 cloudreelRoutes.post("/process-due", requirePermission("posts.write"), async (c) => {
   try {
+    if (c.env.CLOUDREEL_DB) {
+      await syncFromCloudReelDb(c.env, wsId(c)).catch(() => {});
+    }
     const checkSha256 = c.req.query("checkSha256") === "true";
     const batchSize = Math.min(Number(c.req.query("batchSize")) || 20, 50);
 

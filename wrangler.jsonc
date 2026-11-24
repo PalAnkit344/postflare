@@ -13,7 +13,8 @@
     "run_worker_first": ["/", "/demo", "/privacy", "/privacy/", "/terms", "/terms/", "/data-deletion", "/data-deletion/", "/api/*", "/oauth/*", "/m/*", "/u/*", "/a/*", "/mcp", "/mcp/*"]
   },
   "d1_databases": [
-    { "binding": "DB", "database_name": "postflare", "database_id": "be32e602-61c1-462f-a66c-4716255ff10a", "migrations_dir": "migrations" }
+    { "binding": "DB", "database_name": "postflare", "database_id": "be32e602-61c1-462f-a66c-4716255ff10a", "migrations_dir": "migrations" },
+    { "binding": "CLOUDREEL_DB", "database_name": "cloudreel-db", "database_id": "87a53018-928d-4b08-9236-0bdbb593fc9b" }
   ],
   "r2_buckets": [
     { "binding": "MEDIA", "bucket_name": "postflare-media" }

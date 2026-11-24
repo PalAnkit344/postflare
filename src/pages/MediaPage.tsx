@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
-import { Download, ImagePlus, Link2, Loader2, Trash2, Type, Upload, X } from "lucide-react";
+import { AlertCircle, Download, ImagePlus, Link2, Loader2, Trash2, Type, Upload, X } from "lucide-react";
 import { AltTextDialog } from "../components/media/AltTextDialog";
 import { StorageUsage } from "../components/media/StorageUsage";
 import { MediaThumb } from "../components/posts/MediaThumb";
@@ -304,13 +304,39 @@ function MediaDetail({
 }) {
   const { tz } = useApp();
   const canWrite = useSession().can("media.write");
+  const [videoError, setVideoError] = useState(false);
+
+  useEffect(() => {
+    setVideoError(false);
+  }, [m?.id]);
+
   return (
     <Dialog open={!!m} onClose={onClose} size="xl" title={m?.filename}>
       {m && (
         <div className="grid gap-0 md:grid-cols-[minmax(0,1fr)_280px]">
           <div className="flex items-center justify-center bg-zinc-100 p-4 dark:bg-black">
             {m.kind === "video" ? (
-              <video src={m.url} controls className="max-h-[60vh] w-full rounded-lg" />
+              <div className="flex w-full flex-col items-center justify-center gap-3">
+                <video
+                  key={m.id}
+                  src={m.url}
+                  controls
+                  autoPlay
+                  playsInline
+                  crossOrigin="anonymous"
+                  className="max-h-[60vh] w-full rounded-lg bg-black"
+                  onError={() => setVideoError(true)}
+                />
+                {videoError && (
+                  <div
+                    role="alert"
+                    className="flex w-full items-center gap-2 rounded-lg bg-amber-50 p-3 text-xs text-amber-800 ring-1 ring-amber-200 dark:bg-amber-950/40 dark:text-amber-300 dark:ring-amber-900"
+                  >
+                    <AlertCircle className="size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                    <span>Unable to play video in this browser. You can download the file or open its public URL.</span>
+                  </div>
+                )}
+              </div>
             ) : (
               <img src={m.url} alt={m.alt ?? ""} className="max-h-[60vh] rounded-lg object-contain" />
             )}

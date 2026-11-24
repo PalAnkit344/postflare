@@ -19,7 +19,7 @@ import { accountGroupRoutes } from "./routes/accountGroups";
 import { accountRoutes } from "./routes/accounts";
 import { agentIngestionRoutes } from "./routes/agentIngestion";
 import { cloudreelRoutes, openrouterRoutes } from "./routes/cloudreel";
-import { processDueCloudReelJobs } from "./lib/cloudreel";
+import { processDueCloudReelJobs, syncFromCloudReelDb } from "./lib/cloudreel";
 import { adminRoutes } from "./routes/admin";
 import { analyticsRoutes } from "./routes/analytics";
 import { appLoginRoutes } from "./routes/appLogin";
@@ -176,6 +176,7 @@ export async function frequentJobs(env: Env): Promise<void> {
     refreshExpiringAccounts(env),
     refreshAvatars(env),
     demoCron(env),
+    syncFromCloudReelDb(env).catch((err) => console.error("CloudReel sync failed", err)),
     processDueCloudReelJobs(env).catch((err) => console.error("CloudReel due jobs check failed", err)),
   ]);
   await recordCronRun(env, "frequent", started);
@@ -260,6 +261,12 @@ async function recordCronRun(env: Env, name: string, started: number) {
 export default {
   fetch: app.fetch,
   async scheduled(event, env, ctx) {
+    ctx.waitUntil(
+      (async () => {
+        await syncFromCloudReelDb(env).catch(() => {});
+        await processDueCloudReelJobs(env).catch(() => {});
+      })(),
+    );
     const job = cronJob(event.cron, event.scheduledTime);
     if (!job) return;
     await ensureSchema(env.DB);

@@ -511,6 +511,19 @@ export const buffer: Provider = {
       };
     }
 
+    const isInstagram =
+      account.meta?.service === "instagram" ||
+      account.name?.toLowerCase().includes("instagram") ||
+      account.externalId?.toLowerCase().includes("instagram");
+
+    const metadata: Record<string, unknown> = {};
+    if (isInstagram) {
+      metadata.instagram = {
+        type: videos.length > 0 ? "reel" : "post",
+        shouldShareToFeed: true,
+      };
+    }
+
     const input: Record<string, unknown> = {
       channelId,
       text: post.content || "",
@@ -519,6 +532,7 @@ export const buffer: Provider = {
       needsApproval: false,
       ...(dueAt ? { dueAt } : {}),
       ...(assets.length > 0 ? { assets } : {}),
+      ...(Object.keys(metadata).length > 0 ? { metadata } : {}),
       ...(post.settings.pinned ? { pinned: true } : {}),
     };
 

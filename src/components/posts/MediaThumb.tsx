@@ -1,4 +1,4 @@
-import { Film, ImageOff } from "lucide-react";
+import { Film, ImageOff, Play } from "lucide-react";
 import { useState } from "react";
 import type { MediaDTO } from "../../lib/types";
 import { formatDuration } from "../../lib/format";
@@ -32,7 +32,22 @@ export function MediaThumb({
   if (media.kind === "video")
     return (
       <div className={cn("relative overflow-hidden bg-black", className)}>
-        <video src={`${media.url}#t=0.1`} preload="metadata" muted playsInline controls={controls} className="size-full object-cover" />
+        <video
+          src={`${media.url}#t=0.1`}
+          preload="metadata"
+          muted
+          playsInline
+          controls={controls}
+          crossOrigin="anonymous"
+          className={cn("size-full object-cover", !controls && "pointer-events-none")}
+        />
+        {!controls && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+            <span className="flex size-8 items-center justify-center rounded-full bg-black/60 text-white shadow-sm backdrop-blur-xs">
+              <Play className="ml-0.5 size-4 fill-white" />
+            </span>
+          </div>
+        )}
         {!controls && badge && (
           <span className="pointer-events-none absolute bottom-1 left-1 inline-flex items-center gap-1 rounded bg-black/70 px-1 py-0.5 text-[10px] font-medium text-white">
             <Film className="size-3" />

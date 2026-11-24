@@ -93,6 +93,7 @@ export interface CloudReelJobRow {
   published_url: string | null;
   published_at: string | null;
   error_message: string | null;
+  post_type?: string;
   created_at: string;
   updated_at: string;
 }
@@ -369,7 +370,27 @@ export async function verifyDestinationAccount(
     binds.push(workspaceId);
   }
 
-  const account = await db.prepare(query).bind(...binds).first<AccountRow>();
+  let account = await db.prepare(query).bind(...binds).first<AccountRow>();
+  if (!account) {
+    // If not found by exact ID, fallback search by username, name, or metadata (e.g. Creator Agent uses 'reel_se_break')
+    let fallbackQuery = "SELECT * FROM accounts WHERE (username = ? OR name LIKE ? OR meta LIKE ?)";
+    const fallbackBinds: unknown[] = [accountId, `%${accountId}%`, `%${accountId}%`];
+    if (workspaceId) {
+      fallbackQuery += " AND workspace_id = ?";
+      fallbackBinds.push(workspaceId);
+    }
+    fallbackQuery += " LIMIT 1";
+    account = await db.prepare(fallbackQuery).bind(...fallbackBinds).first<AccountRow>();
+  }
+
+  // Cross-workspace fallback if not found with workspaceId
+  if (!account && workspaceId) {
+    account = await db
+      .prepare("SELECT * FROM accounts WHERE (id = ? OR username = ? OR name LIKE ? OR meta LIKE ?) LIMIT 1")
+      .bind(accountId, accountId, `%${accountId}%`, `%${accountId}%`)
+      .first<AccountRow>();
+  }
+
   if (!account) {
     return { ok: false, error: `Destination account "${accountId}" not found in database or wrong workspace` };
   }
@@ -467,7 +488,7 @@ export async function executeCloudReelPublish(
           r2Key: video.r2_key,
         },
       ],
-      settings: {},
+      settings: { postType: job.post_type || "reel" },
     });
 
     if (publishResult.status === "pending") {
@@ -514,6 +535,7 @@ export async function recordCloudReelResult(
     error?: string;
   },
   nowEpoch: number = now(),
+  cloudreelDb?: D1Database,
 ): Promise<void> {
   const nowIso = new Date(nowEpoch).toISOString();
 
@@ -533,6 +555,21 @@ export async function recordCloudReelResult(
       )
       .bind(result.platformPostId || null, result.publishedUrl || null, nowIso, nowIso, jobId)
       .run();
+
+    if (cloudreelDb) {
+      await cloudreelDb
+        .prepare(
+          `UPDATE upload_jobs
+           SET status = 'PUBLISHED',
+               platform_post_id = ?,
+               published_url = ?,
+               updated_at = ?
+           WHERE job_id = ?`
+        )
+        .bind(result.platformPostId || null, result.publishedUrl || null, nowIso, jobId)
+        .run()
+        .catch(() => {});
+    }
     return;
   }
 
@@ -550,6 +587,14 @@ export async function recordCloudReelResult(
       )
       .bind(`Ambiguous external timeout: ${result.error}`, nowIso, jobId)
       .run();
+
+    if (cloudreelDb) {
+      await cloudreelDb
+        .prepare(`UPDATE upload_jobs SET status = 'REVIEW_REQUIRED', updated_at = ? WHERE job_id = ?`)
+        .bind(nowIso, jobId)
+        .run()
+        .catch(() => {});
+    }
     return;
   }
 
@@ -575,6 +620,14 @@ export async function recordCloudReelResult(
       )
       .bind(result.error || "Exceeded maximum publishing attempts", nowIso, jobId)
       .run();
+
+    if (cloudreelDb) {
+      await cloudreelDb
+        .prepare(`UPDATE upload_jobs SET status = 'FAILED', updated_at = ? WHERE job_id = ?`)
+        .bind(nowIso, jobId)
+        .run()
+        .catch(() => {});
+    }
   } else {
     // Retryable failure: reset to READY for backoff retry
     await db
@@ -714,7 +767,7 @@ export async function processDueCloudReelJobs(
     const publishRes = await executeCloudReelPublish(env, job, video, accVerify.account);
 
     // 7. Save results
-    await recordCloudReelResult(db, job.job_id, publishRes, nowEpoch);
+    await recordCloudReelResult(db, job.job_id, publishRes, nowEpoch, env.CLOUDREEL_DB);
 
     if (publishRes.ok) {
       publishedCount++;
@@ -735,4 +788,215 @@ export async function processDueCloudReelJobs(
     processed: dueJobs.length,
     succeeded: publishedCount,
   };
+}
+
+/**
+ * Synchronizes videos and upload_jobs from Creator Agent's D1 (cloudreel-db)
+ * into Postflare's D1 (cloudreel_videos, cloudreel_publishing_jobs, and media).
+ */
+export async function syncFromCloudReelDb(
+  env: Env,
+  preferredWorkspaceId?: string,
+): Promise<{ syncedVideos: number; syncedJobs: number }> {
+  const cloudreelDb = env.CLOUDREEL_DB;
+  if (!cloudreelDb || !env.DB) {
+    return { syncedVideos: 0, syncedJobs: 0 };
+  }
+
+  try {
+    // 1. Fetch active accounts from Postflare to resolve account_ids and default workspace
+    const accounts = (await env.DB.prepare("SELECT * FROM accounts WHERE status = 'active'").all<AccountRow>()).results || [];
+
+    let defaultWorkspaceId = preferredWorkspaceId;
+    if (!defaultWorkspaceId) {
+      if (accounts.length > 0 && accounts[0].workspace_id) {
+        defaultWorkspaceId = accounts[0].workspace_id;
+      } else {
+        const firstWs = await env.DB.prepare("SELECT id FROM workspaces LIMIT 1").first<{ id: string }>();
+        defaultWorkspaceId = firstWs?.id || "ws_default";
+      }
+    }
+
+    const findMatchingAccount = (targetId: string, platform: string): AccountRow | undefined => {
+      const normPlatform = platform.toLowerCase().trim();
+      const normTarget = targetId.toLowerCase().trim();
+
+      const exact = accounts.find((a) => a.id === targetId);
+      if (exact) return exact;
+
+      return accounts.find((a) => {
+        const u = (a.username || "").toLowerCase();
+        const n = (a.name || "").toLowerCase();
+        let m = "";
+        try {
+          m = typeof a.meta === "string" ? a.meta.toLowerCase() : JSON.stringify(a.meta).toLowerCase();
+        } catch {}
+
+        const matchesTarget = u === normTarget || n.includes(normTarget) || m.includes(normTarget);
+        if (!matchesTarget) return false;
+
+        const accProvider = a.provider.toLowerCase();
+        let accService = accProvider;
+        if (a.meta) {
+          try {
+            const metaObj = typeof a.meta === "string" ? JSON.parse(a.meta) : a.meta;
+            if (metaObj.service) accService = String(metaObj.service).toLowerCase();
+          } catch {}
+        }
+        return (
+          accProvider === normPlatform ||
+          accService === normPlatform ||
+          (accProvider === "buffer" && (accService === normPlatform || normPlatform === "buffer")) ||
+          (normPlatform === "instagram" && (accProvider === "instagram_standalone" || accProvider === "instagram"))
+        );
+      });
+    };
+
+    // 2. Fetch videos from cloudreel-db
+    const crVideos = (await cloudreelDb.prepare("SELECT * FROM videos").all<{
+      video_id: string;
+      r2_key: string;
+      manifest_r2_key: string | null;
+      title: string | null;
+      description: string | null;
+      sha256: string;
+      size_bytes: number;
+      created_at: string;
+      status: string;
+    }>()).results || [];
+
+    let syncedVideos = 0;
+    const nowIso = new Date().toISOString();
+
+    for (const v of crVideos) {
+      const fileName = v.r2_key.split("/").pop() || `${v.video_id}.mp4`;
+      await env.DB.prepare(
+        `INSERT INTO cloudreel_videos (
+          video_id, file_name, r2_bucket, r2_key, content_type, size_bytes, sha256, created_at, updated_at
+        ) VALUES (?, ?, 'postflare-media', ?, 'video/mp4', ?, ?, ?, ?)
+        ON CONFLICT(video_id) DO UPDATE SET
+          file_name = excluded.file_name,
+          r2_key = excluded.r2_key,
+          size_bytes = CASE WHEN excluded.size_bytes > 0 THEN excluded.size_bytes ELSE cloudreel_videos.size_bytes END,
+          sha256 = COALESCE(excluded.sha256, cloudreel_videos.sha256),
+          updated_at = excluded.updated_at`
+      ).bind(
+        v.video_id,
+        fileName,
+        v.r2_key,
+        v.size_bytes || 0,
+        v.sha256 || null,
+        v.created_at || nowIso,
+        nowIso
+      ).run();
+
+      // Also ensure it exists in the main media table
+      await env.DB.prepare(
+        `INSERT INTO media (id, r2_key, filename, mime, size, kind, status, created_at, workspace_id)
+         VALUES (?, ?, ?, 'video/mp4', ?, 'video', 'ready', ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           r2_key = excluded.r2_key,
+           filename = excluded.filename,
+           size = CASE WHEN excluded.size > 0 THEN excluded.size ELSE media.size END,
+           status = 'ready'`
+      ).bind(
+        v.video_id,
+        v.r2_key,
+        fileName,
+        v.size_bytes || 0,
+        Date.parse(v.created_at || nowIso) || Date.now(),
+        defaultWorkspaceId
+      ).run().catch(() => {});
+
+      syncedVideos++;
+    }
+
+    // 3. Fetch upload_jobs from cloudreel-db
+    const crJobs = (await cloudreelDb.prepare(
+      `SELECT j.*, v.title AS video_title, v.description AS video_desc
+       FROM upload_jobs j
+       LEFT JOIN videos v ON v.video_id = j.video_id`
+    ).all<{
+      job_id: string;
+      video_id: string;
+      account_id: string;
+      platform: string;
+      scheduled_at: string | null;
+      caption: string | null;
+      status: string;
+      approved: number;
+      attempt_count: number;
+      created_at: string;
+      updated_at: string;
+      published_url: string | null;
+      platform_post_id: string | null;
+      video_title: string | null;
+      video_desc: string | null;
+      post_type?: string;
+    }>()).results || [];
+
+    let syncedJobs = 0;
+    for (const j of crJobs) {
+      const matchedAccount = findMatchingAccount(j.account_id, j.platform);
+      const targetAccountId = matchedAccount ? matchedAccount.id : j.account_id;
+      const targetWorkspaceId = matchedAccount?.workspace_id || defaultWorkspaceId;
+
+      const scheduledIso = j.scheduled_at && j.scheduled_at.trim() ? j.scheduled_at : (j.created_at || nowIso);
+      let scheduledEpoch = Date.parse(scheduledIso);
+      if (Number.isNaN(scheduledEpoch)) {
+        scheduledEpoch = Date.now();
+      }
+
+      // Auto-approve scheduled jobs from creator agent if target account is connected,
+      // or keep approved if already approved
+      const isApproved = j.approved === 1 || Boolean(j.scheduled_at && matchedAccount && (j.status === "READY" || j.status === "POSTED" || j.status === "PUBLISHED"));
+      const normalizedStatus = (j.status === "POSTED" || j.status === "PUBLISHED") ? "PUBLISHED" : (j.status || "READY");
+
+      await env.DB.prepare(
+        `INSERT INTO cloudreel_publishing_jobs (
+          job_id, video_id, platform, post_type, account_id, workspace_id, title, description,
+          caption, hashtags, thumbnail_r2_key, scheduled_at, scheduled_at_epoch, timezone,
+          status, approved, attempt_count, max_attempts, published_url, platform_post_id, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, 'Asia/Kolkata', ?, ?, ?, 3, ?, ?, ?, ?)
+        ON CONFLICT(video_id, account_id) DO UPDATE SET
+          platform = excluded.platform,
+          post_type = COALESCE(excluded.post_type, cloudreel_publishing_jobs.post_type),
+          title = COALESCE(excluded.title, cloudreel_publishing_jobs.title),
+          description = COALESCE(excluded.description, cloudreel_publishing_jobs.description),
+          scheduled_at = excluded.scheduled_at,
+          scheduled_at_epoch = excluded.scheduled_at_epoch,
+          status = CASE WHEN excluded.status = 'PUBLISHED' THEN 'PUBLISHED' WHEN cloudreel_publishing_jobs.status = 'PUBLISHED' THEN 'PUBLISHED' ELSE excluded.status END,
+          approved = CASE WHEN cloudreel_publishing_jobs.approved = 1 THEN 1 ELSE excluded.approved END,
+          published_url = COALESCE(excluded.published_url, cloudreel_publishing_jobs.published_url),
+          platform_post_id = COALESCE(excluded.platform_post_id, cloudreel_publishing_jobs.platform_post_id),
+          caption = COALESCE(excluded.caption, cloudreel_publishing_jobs.caption),
+          updated_at = excluded.updated_at`
+      ).bind(
+        j.job_id,
+        j.video_id,
+        j.platform.toLowerCase().trim(),
+        j.post_type || "reel",
+        targetAccountId,
+        targetWorkspaceId,
+        j.video_title || null,
+        j.video_desc || null,
+        j.caption || null,
+        scheduledIso,
+        scheduledEpoch,
+        normalizedStatus,
+        isApproved ? 1 : 0,
+        j.attempt_count || 0,
+        j.published_url || null,
+        j.platform_post_id || null,
+        j.created_at || nowIso,
+        nowIso
+      ).run();
+      syncedJobs++;
+    }
+
+    return { syncedVideos, syncedJobs };
+  } catch (err) {
+    console.error("syncFromCloudReelDb error:", err);
+    return { syncedVideos: 0, syncedJobs: 0 };
+  }
 }

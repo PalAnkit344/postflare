@@ -4,6 +4,7 @@
 interface __BaseEnv_Env {
 	MEDIA: R2Bucket;
 	DB: D1Database;
+	CLOUDREEL_DB?: D1Database;
 	IMAGES: ImagesBinding;
 	ASSETS: Fetcher;
 	PUBLISH_WORKFLOW: Workflow<Parameters<import("./index").PublishWorkflow['run']>[0]['payload']>;

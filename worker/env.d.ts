@@ -40,4 +40,6 @@ interface Env {
   CREATOR_RESEARCH_API_KEY?: string;
   /** Optional dedicated Cloudflare R2 bucket binding for research data and video records. Defaults to MEDIA. */
   RESEARCH_STORAGE?: R2Bucket;
+  /** CloudReel shared Creator Agent D1 database binding */
+  CLOUDREEL_DB?: D1Database;
 }

@@ -447,5 +447,6 @@ export const api = {
     retryJob: (id: string) => request<{ ok: true; retried: true }>("POST", `/cloudreel/jobs/${encodeURIComponent(id)}/retry`, {}),
     processDue: (q: { checkSha256?: boolean; batchSize?: number } = {}) => request<{ ok: true; result: any }>("POST", `/cloudreel/process-due${qs(q)}`, {}),
     submitManifest: (manifest: any, autoApprove = false) => request<{ ok: true; videoId: string; jobId: string }>("POST", `/cloudreel/manifest${qs({ autoApprove: autoApprove ? "true" : undefined })}`, manifest),
+    syncDb: () => request<{ ok: true; result: { syncedVideos: number; syncedJobs: number } }>("POST", "/cloudreel/sync", {}),
   },
 };
